@@ -317,5 +317,70 @@ def increment_item_qty(item_id):
         if conn: conn.rollback(); conn.close()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/pokemon/<pokemon_id>', methods=['DELETE'])
+def release_pokemon(pokemon_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM pokemon WHERE id = %s", (pokemon_id,))
+            pokemon_exists = cur.fetchone()
+            if not pokemon_exists:
+                conn.close()
+                return jsonify({"error": "Pokemon not found"}), 404
+
+            cur.execute("DELETE FROM pokemon WHERE id = %s RETURNING *", (pokemon_id,))
+            deleted_pokemon = cur.fetchone() # Optional: check if deletion was successful
+            conn.commit()
+        conn.close()
+        
+        if deleted_pokemon:
+            return jsonify({"message": f"Pokemon {deleted_pokemon['name']} released successfully"}), 200
+        else:
+            # This case should ideally not be reached if the SELECT found it and DELETE ran.
+            # But as a safeguard:
+            return jsonify({"error": "Pokemon found but could not be deleted"}), 500
+
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"Error releasing pokemon {pokemon_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/items/<item_id>', methods=['DELETE'])
+def discard_item(item_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, name FROM items WHERE id = %s", (item_id,))
+            item_exists = cur.fetchone()
+            if not item_exists:
+                conn.close()
+                return jsonify({"error": "Item not found"}), 404
+
+            cur.execute("DELETE FROM items WHERE id = %s RETURNING *", (item_id,))
+            deleted_item = cur.fetchone() # Optional: check if deletion was successful
+            conn.commit()
+        conn.close()
+
+        if deleted_item:
+            return jsonify({"message": f"Item '{deleted_item['name']}' discarded successfully"}), 200
+        else:
+            return jsonify({"error": "Item found but could not be discarded"}), 500
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"Error discarding item {item_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+        
 if __name__ == '__main__':
     app.run(debug=True, port=os.getenv("PORT", 5001))
