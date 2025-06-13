@@ -50,6 +50,26 @@ def add_points_to_player(conn, trainer_name, points_to_add):
         updated_player = cur.fetchone()
         conn.commit() # Commit after updating points
     return updated_player
+@app.route('/api/players', methods=['GET'])
+def get_all_players():
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch all players, ordered by points in descending order
+            cur.execute("SELECT * FROM players ORDER BY points DESC")
+            players = cur.fetchall()
+        conn.close()
+        
+        # If no players are found, it's not an error, just an empty list.
+        # The frontend was updated to handle a 200 OK with an empty array.
+        return jsonify(players if players else []), 200
+    except Exception as e:
+        if conn: conn.close()
+        print(f"Error fetching all players: {e}") # Log the error for debugging
+        return jsonify({"error": str(e)}), 500
 
 
 # --- Player Endpoints ---
