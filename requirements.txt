@@ -2,4 +2,5 @@ Flask
 Flask-Cors
 psycopg2-binary # Use psycopg2-binary for easier installation on Heroku
 python-dotenv
-gunicorn # Don't forget Gunicorn itself!
+gunicorn
+cloudinary
