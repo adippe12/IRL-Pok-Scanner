@@ -1,3 +1,4 @@
+from datetime import date
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -381,6 +382,90 @@ def discard_item(item_id):
         print(f"Error discarding item {item_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
+# --- Daily Quest Endpoints ---
+@app.route('/api/daily-quests/today', methods=['GET'])
+def get_daily_quest_today():
+    today_str = date.today().isoformat()
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM daily_quests WHERE quest_date = %s", (today_str,))
+            quest = cur.fetchone()
+        conn.close()
+        if quest:
+            return jsonify(quest), 200
+        else:
+            return jsonify({"message": "No quest found for today"}), 404
+    except Exception as e:
+        if conn:
+            conn.close()
+        print(f"Error fetching daily quest for {today_str}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/daily-quests', methods=['POST'])
+def create_daily_quest():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid input"}), 400
+
+    required_fields = ['title', 'description', 'summarizedQuest']
+    if not all(field in data for field in required_fields):
+        missing = [field for field in required_fields if field not in data]
+        return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+    today_str = date.today().isoformat()
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO daily_quests (quest_title, quest_description, quest_summary, quest_date, suggested_reward)
+                VALUES (%s, %s, %s, %s, %s) RETURNING *
+                """,
+                (data['title'], data['description'], data['summarizedQuest'], today_str, data.get('suggestedReward'))
+            )
+            new_quest = cur.fetchone()
+            conn.commit()
+        conn.close()
+        return jsonify(new_quest), 201
+    except psycopg2.IntegrityError as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        # It's good practice to log the actual error on the server for debugging
+        print(f"IntegrityError creating daily quest: {e}")
+        return jsonify({"error": "A quest for today might already exist or another integrity constraint was violated."}), 409
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        print(f"Error creating daily quest: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/daily-quests/summaries', methods=['GET'])
+def get_daily_quest_summaries():
+    limit = request.args.get('limit', default=10, type=int)
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT quest_summary FROM daily_quests ORDER BY quest_date DESC LIMIT %s", (limit,))
+            results = cur.fetchall()
+        conn.close()
+        summaries = [row['quest_summary'] for row in results]
+        return jsonify(summaries), 200
+    except Exception as e:
+        if conn:
+            conn.close()
+        print(f"Error fetching daily quest summaries: {e}")
+        return jsonify({"error": str(e)}), 500
         
 if __name__ == '__main__':
     app.run(debug=True, port=os.getenv("PORT", 5001))
